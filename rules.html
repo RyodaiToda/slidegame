@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>遊び方 | スライド・センター</title>
+  <meta name="description" content="スライド・センターの遊び方。コマの動かし方、勝ち方、引き分けの決まり。">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#f5f1e8">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%98%85%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1><a href="index.html">スライド・センター</a></h1>
+    <nav><a href="index.html">対局にもどる</a></nav>
+  </header>
+
+  <main class="doc">
+    <p class="lead">5×5の盤で遊ぶ2人用のゲームです。運の要素はありません。</p>
+
+    <h2>勝ち方</h2>
+    <p>自分のコマを、真ん中の★のマスで<strong>止めた</strong>ほうが勝ちです。</p>
+
+    <h2>はじめの並び</h2>
+    <p>コマは3個ずつ。それぞれ手前の列の左から1・2・5番目に置きます。先手から交互に1手ずつ指します。</p>
+    <div class="examples">
+      <figure>
+        <div class="board" data-first="20,21,24" data-second="0,3,4"></div>
+        <figcaption>下が先手、上が後手。真ん中は空けておきます。</figcaption>
+      </figure>
+    </div>
+
+    <h2>コマの動かし方</h2>
+    <ol>
+      <li>自分のコマを1つ選びます。</li>
+      <li>上・下・左・右のどれかへ滑らせます（斜めは不可）。</li>
+      <li>コマは<strong>止まるまで</strong>進みます。ほかのコマにぶつかったらその手前、何もなければ盤の端で止まります。</li>
+    </ol>
+    <p>途中で止めることはできません。コマを取ったり、飛び越えたりもしません。</p>
+    <div class="examples">
+      <figure>
+        <div class="board" data-first="20,21,24" data-second="0,3,4" data-move="24>9"></div>
+        <figcaption><strong>コマにぶつかる</strong><br>右下のコマを上へ。相手のコマの手前で止まります。</figcaption>
+      </figure>
+      <figure>
+        <div class="board" data-first="20,21,24" data-second="0,3,4" data-move="21>1"></div>
+        <figcaption><strong>端まで進む</strong><br>途中に何もないので、いちばん上まで行きます。</figcaption>
+      </figure>
+      <figure>
+        <div class="board" data-first="20,21,24" data-second="0,3,4" data-mark="20"></div>
+        <figcaption><strong>動けない向き</strong><br>左下のコマは、右隣がコマ、左と下が端なので、上にしか動かせません。</figcaption>
+      </figure>
+    </div>
+    <p>1マスも進めない向きは選べません（その場にとどまってパスする、はできません）。</p>
+
+    <h2>真ん中で止めるには</h2>
+    <p>コマは止まるまで進むので、真ん中の<strong>向こう側に壁になるコマ</strong>がないと通り過ぎてしまいます。通り過ぎただけでは勝ちになりません。壁にするコマは、自分のでも相手のでもかまいません。</p>
+    <div class="examples">
+      <figure>
+        <div class="board" data-first="20,22,24" data-second="0,4,7" data-move="22>12"></div>
+        <figcaption><strong>勝ち</strong><br>真ん中の上に相手のコマがあるので、★で止まります。</figcaption>
+      </figure>
+      <figure>
+        <div class="board" data-first="20,22,24" data-second="0,3,4" data-move="22>2"></div>
+        <figcaption><strong>通り過ぎる</strong><br>壁がないので端まで行ってしまいます。</figcaption>
+      </figure>
+    </div>
+    <p>「壁を作る」「相手に壁を使わせない」が駆け引きの中心です。</p>
+
+    <h2>引き分け</h2>
+    <ul>
+      <li>同じ配置・同じ手番が<strong>3回</strong>現れたら引き分け。</li>
+      <li>両者合わせて<strong>60手</strong>指しても決着しなければ引き分け。</li>
+    </ul>
+    <p>まれに、3個とも四方をふさがれて動かせなくなることがあります。そのときはパスになり、相手が続けて指します。</p>
+
+    <h2>CPUの強さ</h2>
+    <p>このゲームはすべての局面（約269万通り）を計算し尽くしてあり、お互いに最善を尽くすと引き分けになることが分かっています。「最強」のCPUはその計算結果どおりに指すので、絶対に負けません。引き分けに持ち込めれば、あなたも最善です。</p>
+
+    <p class="play-link"><a class="button primary" href="index.html">対局する</a></p>
+  </main>
+
+  <script type="module" src="js/diagram.js"></script>
+</body>
+</html>

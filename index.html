@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>スライド・センター</title>
+  <meta name="description" content="コマを止まるまで滑らせて、先に真ん中で止めたほうが勝ち。5×5の盤で遊ぶ2人用ボードゲームのCPU対戦。">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#f5f1e8">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%98%85%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>スライド・センター</h1>
+    <nav><a href="rules.html">遊び方</a></nav>
+  </header>
+
+  <main class="game">
+    <p class="lead">コマを止まるまで滑らせて、先に真ん中の★で<strong>止めた</strong>ほうが勝ち。</p>
+
+    <div class="players">
+      <span class="player"><span class="chip" id="chip-you"></span><span id="label-you"></span></span>
+      <span class="player"><span class="chip" id="chip-cpu"></span><span id="label-cpu"></span></span>
+    </div>
+
+    <div id="board" class="board"></div>
+
+    <div class="status" aria-live="polite">
+      <p id="status-main" class="status-main"></p>
+      <p id="status-sub" class="status-sub"></p>
+    </div>
+
+    <div id="result" class="result" hidden>
+      <p id="result-text" class="result-text"></p>
+      <p id="result-detail" class="result-detail"></p>
+      <button type="button" id="rematch" class="button primary">もう一度（先手・後手を交代）</button>
+    </div>
+
+    <form class="settings" id="settings">
+      <fieldset>
+        <legend>CPUの強さ</legend>
+        <div class="segmented" id="level-options"></div>
+      </fieldset>
+      <fieldset>
+        <legend>あなたの手番</legend>
+        <div class="segmented">
+          <label><input type="radio" name="side" value="first"><span>先手</span></label>
+          <label><input type="radio" name="side" value="second"><span>後手</span></label>
+          <label><input type="radio" name="side" value="random"><span>ランダム</span></label>
+        </div>
+      </fieldset>
+      <button type="button" id="new-game" class="button">新しい対局</button>
+    </form>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
