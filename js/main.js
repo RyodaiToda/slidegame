@@ -276,7 +276,12 @@ function setupBoard() {
       : null;
   });
 
-  boardEl.addEventListener('pointerup', (e) => {
+  window.addEventListener('pointercancel', () => {
+    swipe = null;
+  });
+
+  // 指やマウスが盤の外で離れてもスワイプとして扱えるよう、window で受ける
+  window.addEventListener('pointerup', (e) => {
     if (!swipe || !canInput()) return;
     const dx = e.clientX - swipe.x;
     const dy = e.clientY - swipe.y;
