@@ -9,9 +9,10 @@ const translate = (cell) => `translate(${(cell % 5) * 100}%, ${Math.floor(cell /
 
 for (const board of document.querySelectorAll('.board[data-first]')) {
   const cellEls = [];
+  const bonus = board.dataset.bonus ? Number(board.dataset.bonus) : -1;
   for (let i = 0; i < 25; i++) {
     const el = document.createElement('div');
-    el.className = i === 12 ? 'cell center' : 'cell';
+    el.className = i === 12 ? 'cell center' : i === bonus ? 'cell bonus' : 'cell';
     board.append(el);
     cellEls.push(el);
   }

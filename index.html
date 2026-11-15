@@ -50,6 +50,15 @@
           <label><input type="radio" name="side" value="random"><span>ランダム</span></label>
         </div>
       </fieldset>
+      <fieldset>
+        <legend>特殊マス（ちょうど止まると、同じコマをもう一回動かせる）</legend>
+        <div class="segmented">
+          <label><input type="radio" name="bonus" value="off"><span>なし</span></label>
+          <label><input type="radio" name="bonus" value="start"><span>最初から</span></label>
+          <label><input type="radio" name="bonus" value="mid"><span>途中から</span></label>
+        </div>
+        <p class="hint">★の斜め4マスのどれか1つがランダムに選ばれます。「途中から」は10手目が終わったときに現れます。</p>
+      </fieldset>
       <button type="button" id="new-game" class="button">新しい対局</button>
     </form>
   </main>

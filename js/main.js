@@ -1,6 +1,6 @@
 // ゲーム画面。入力・表示・対局の進行を受け持つ。
 
-import { CENTER, MAX_MOVES, initialState, legalMoves, applyMove } from './rules.js';
+import { CENTER, MAX_MOVES, BONUS_APPEAR_AT, initialState, movesFor, applyMove } from './rules.js';
 import { LEVELS, chooseMove } from './cpu.js';
 
 const SETTINGS_KEY = 'slide-center-settings';
@@ -25,25 +25,23 @@ let animating = false;
 let humanMoved = false;
 let gameId = 0; // 古い対局のタイマーを無効にするための番号
 
-// 解析表（「つよい」「最強」用）。必要になった時点でWorkerに計算させる
-let table = null;
-let tablePromise = null;
-let tableProgress = 0;
-let tableFailed = false;
+// 解析表（「つよい」「最強」用）。特殊マスの位置ごとに別の表が要る。必要になった時点でWorkerに計算させる
+// bonus（-1=なし）→ { promise, val, progress, failed }
+const tables = new Map();
 
 // ---- 設定 ----
 
 function loadSettings() {
-  const fallback = { level: 'normal', side: 'first' };
+  const settings = { level: 'normal', side: 'first', bonus: 'off' };
   try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
-    if (saved && LEVELS.some((l) => l.id === saved.level) && ['first', 'second', 'random'].includes(saved.side)) {
-      return saved;
-    }
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
+    if (LEVELS.some((l) => l.id === saved.level)) settings.level = saved.level;
+    if (['first', 'second', 'random'].includes(saved.side)) settings.side = saved.side;
+    if (['off', 'start', 'mid'].includes(saved.bonus)) settings.bonus = saved.bonus;
   } catch {
     // 保存できない環境でも遊べるようにする
   }
-  return fallback;
+  return settings;
 }
 
 function saveSettings() {
@@ -66,31 +64,34 @@ function place(piece) {
 
 // ---- 解析表 ----
 
-function ensureTable() {
-  if (tablePromise) return tablePromise;
-  tablePromise = new Promise((resolve) => {
+function ensureTable(bonus) {
+  if (tables.has(bonus)) return tables.get(bonus).promise;
+  const entry = { val: null, progress: 0, failed: false };
+  entry.promise = new Promise((resolve) => {
     const fail = () => {
-      tableFailed = true;
+      entry.failed = true;
       resolve();
     };
     try {
       const worker = new Worker(new URL('./solver-worker.js', import.meta.url), { type: 'module' });
       worker.onmessage = (e) => {
         if (e.data.type === 'progress') {
-          tableProgress = e.data.p;
+          entry.progress = e.data.p;
           render();
         } else {
-          table = e.data.val;
+          entry.val = e.data.val;
           worker.terminate();
           resolve();
         }
       };
       worker.onerror = fail;
+      worker.postMessage({ bonus });
     } catch {
       fail();
     }
   });
-  return tablePromise;
+  tables.set(bonus, entry);
+  return entry.promise;
 }
 
 // ---- 対局の進行 ----
@@ -99,7 +100,7 @@ function newGame(side) {
   gameId++;
   human = side;
   level = LEVELS.find((l) => l.id === settings.level);
-  state = initialState();
+  state = initialState(settings.bonus);
   selected = null;
   lastFrom = null;
   animating = false;
@@ -121,7 +122,11 @@ function newGame(side) {
   });
 
   $('result').hidden = true;
-  if (level.needsTable) ensureTable();
+  if (level.needsTable) {
+    ensureTable(state.bonus);
+    // 「途中から」の特殊マス用の表も先に作っておく（CPUが使うのは現れてから）
+    if (state.hiddenBonus >= 0) ensureTable(state.hiddenBonus);
+  }
   render();
   if (state.turn !== human) cpuTurn();
 }
@@ -154,6 +159,8 @@ function play(move) {
   setTimeout(() => {
     if (id !== gameId) return;
     animating = false;
+    // もう一回のときは、動かせる唯一のコマを選んだ状態にしておく
+    if (state.extra && state.turn === human) selected = state.bonus;
     render();
     if (state.result) showResult();
     else if (state.turn !== human) cpuTurn();
@@ -163,10 +170,13 @@ function play(move) {
 function cpuTurn() {
   const id = gameId;
   const pause = new Promise((resolve) => setTimeout(resolve, CPU_DELAY_MS));
-  const ready = level.needsTable ? Promise.all([pause, ensureTable()]) : pause;
+  // CPUが見るのは今見えている特殊マスだけ（伏せてある特殊マスの表は使わない）
+  const { bonus } = state;
+  const ready = level.needsTable ? Promise.all([pause, ensureTable(bonus)]) : pause;
   ready.then(() => {
     if (id !== gameId) return;
     render();
+    const table = level.needsTable ? tables.get(bonus).val : null;
     play(chooseMove(level.id, state, table));
   });
 }
@@ -197,13 +207,15 @@ function showResult() {
 function render() {
   const targets = new Map(); // 到着マス → 手
   if (selected !== null && canInput()) {
-    for (const m of legalMoves(state.pieces, human)) {
+    for (const m of movesFor(state)) {
       if (m.from === selected) targets.set(m.to, m);
     }
   }
 
   cellEls.forEach((el, v) => {
     const cell = view(v);
+    el.classList.toggle('bonus', cell === state.bonus);
+    el.classList.toggle('appear', cell === state.bonus && state.bonusAppeared);
     el.classList.toggle('target', targets.has(cell));
     el.classList.toggle('last-from', cell === lastFrom && !pieces.some((p) => p.cell === cell));
   });
@@ -211,7 +223,7 @@ function render() {
   const input = canInput();
   for (const p of pieces) {
     const mine = p.side === human;
-    p.el.classList.toggle('movable', mine && input);
+    p.el.classList.toggle('movable', mine && input && (!state.extra || p.cell === state.bonus));
     p.el.classList.toggle('selected', mine && p.cell === selected);
     p.el.classList.toggle('winner', Boolean(state.result) && p.cell === CENTER);
     p.el.tabIndex = mine ? 0 : -1;
@@ -227,22 +239,27 @@ function render() {
   $('label-you').textContent = `あなた（${SIDE_NAMES[human]}）`;
   $('label-cpu').textContent = `CPU・${level.name}（${SIDE_NAMES[1 - human]}）`;
 
+  const entry = tables.get(state.bonus);
   let main;
   const sub = [];
   if (state.result) {
     main = '対局終了';
   } else if (state.turn === human) {
-    main = 'あなたの番です';
+    main = state.extra ? '特殊マス！同じコマをもう一回動かせます' : 'あなたの番です';
     if (state.passed) sub.push('CPUは動かせるコマがないのでパスしました');
     else if (!humanMoved) sub.push('コマを選んで行き先をタップ（スワイプや矢印キーでも動かせます）');
   } else {
-    main = 'CPUが考えています…';
+    main = state.extra ? 'CPUが特殊マスに止まりました。もう一回動きます' : 'CPUが考えています…';
     if (state.passed) sub.push('あなたは動かせるコマがないのでパスになりました');
-    if (level.needsTable && !table && !tableFailed) {
-      sub.push(`読みを準備中 ${Math.round(tableProgress * 100)}%`);
+    if (level.needsTable && entry && !entry.val && !entry.failed) {
+      sub.push(`読みを準備中 ${Math.round(entry.progress * 100)}%`);
     }
   }
-  if (level.needsTable && tableFailed) sub.push('読みの準備に失敗したため「ふつう」相当で対戦します');
+  if (level.needsTable && entry && entry.failed) sub.push('読みの準備に失敗したため「ふつう」相当で対戦します');
+  if (!state.result && state.bonusAppeared) sub.push('特殊マス（+1）が現れました');
+  if (!state.result && state.hiddenBonus >= 0) {
+    sub.push(`特殊マスはあと${BONUS_APPEAR_AT - state.moveCount}手で現れます`);
+  }
   if (!state.result && state.repeat === 2) sub.push('この局面は2回目です（3回目で引き分け）');
   sub.push(`${state.moveCount} / ${MAX_MOVES} 手`);
   $('status-main').textContent = main;
@@ -254,7 +271,7 @@ function render() {
 // ---- 入力 ----
 
 function moveFor(cell, dir) {
-  return legalMoves(state.pieces, human).find((m) => m.from === cell && m.dir === dir);
+  return movesFor(state).find((m) => m.from === cell && m.dir === dir);
 }
 
 function setupBoard() {
@@ -303,6 +320,7 @@ function setupBoard() {
     const piece = pieces.find((p) => p.el === e.target);
     if (piece) {
       if (piece.side !== human) return;
+      if (state.extra && piece.cell !== state.bonus) return; // もう一回は同じコマだけ
       selected = selected === piece.cell ? null : piece.cell;
       render();
       return;
@@ -346,9 +364,14 @@ function setupSettings() {
   const form = $('settings');
   form.elements.level.value = settings.level;
   form.elements.side.value = settings.side;
+  form.elements.bonus.value = settings.bonus;
 
   form.addEventListener('change', () => {
-    settings = { level: form.elements.level.value, side: form.elements.side.value };
+    settings = {
+      level: form.elements.level.value,
+      side: form.elements.side.value,
+      bonus: form.elements.bonus.value,
+    };
     saveSettings();
     // まだ指していない（または終局後）なら、その場で新しい設定の対局を始める
     if (!humanMoved || state.result) newGame(sideFromSettings());

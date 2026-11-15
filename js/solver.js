@@ -26,8 +26,14 @@ export function posIndex(mover, opp) {
   return comboRank(mover[0], mover[1], mover[2]) * NC + comboRank(opp[0], opp[1], opp[2]);
 }
 
-// 戻り値 val[posIndex] : 0=引き分け、+n=手番側がn手で勝ち、-n=手番側がn手で負け（手数は両者合計）
-export function solve(onProgress = () => {}) {
+// 「もう一回」の局面の添字は EXTRA + posIndex（手番側の、特殊マスにいるコマだけを動かせる）
+export const EXTRA = NC * NC;
+
+// 戻り値 val : 0=引き分け、+n=手番側がn手で勝ち、-n=手番側がn手で負け（手数は両者合計）
+//   val[posIndex]         普通の局面
+//   val[EXTRA + posIndex] 特殊マスに止まった直後の「もう一回」の局面（bonus を指定したときだけ使う）
+// bonus: 「ちょうど止まれば、同じコマをもう一回動かせる」マス（-1 ならなし）
+export function solve(onProgress = () => {}, bonus = -1) {
   const cells = new Uint8Array(NC * 3);
   const masks = new Int32Array(NC);
   for (let c = 2; c < 24; c++) {
@@ -43,19 +49,31 @@ export function solve(onProgress = () => {}) {
     }
   }
 
-  const val = new Int8Array(NC * NC);
-  const remaining = new Uint8Array(NC * NC); // まだ「相手の勝ち」と確定していない子の数
-  const queue = new Int32Array(NC * NC);
+  const size = bonus >= 0 ? 2 * EXTRA : EXTRA;
+  const val = new Int8Array(size);
+  const remaining = new Uint8Array(size); // まだ「負け」と確定していない子の数
+  const queue = new Int32Array(size);
   let head = 0;
   let tail = 0;
   const passParent = new Map(); // 子局面 → パスでそこへ進む局面
   let positions = 0;
   let passCount = 0;
 
+  // from のコマを d 方向へ滑らせた到着マス
+  const dest = (occ, from, d) => {
+    let cur = from;
+    for (;;) {
+      const nb = NEIGHBOR[cur * 4 + d];
+      if (nb < 0 || (occ >> nb) & 1) return cur;
+      cur = nb;
+    }
+  };
+
   // 1) 各局面の合法手を数え、1手で勝てる局面を起点にする
   for (let mi = 0; mi < NC; mi++) {
     if ((mi & 127) === 0) onProgress((mi / NC) * 0.4);
     const mm = masks[mi];
+    const hasBonus = bonus >= 0 && (mm >> bonus) & 1;
     for (let oi = 0; oi < NC; oi++) {
       if (mm & masks[oi]) continue;
       positions++;
@@ -66,15 +84,10 @@ export function solve(onProgress = () => {}) {
       for (let k = 0; k < 3; k++) {
         const from = cells[mi * 3 + k];
         for (let d = 0; d < 4; d++) {
-          let cur = from;
-          for (;;) {
-            const nb = NEIGHBOR[cur * 4 + d];
-            if (nb < 0 || (occ >> nb) & 1) break;
-            cur = nb;
-          }
-          if (cur !== from) {
+          const to = dest(occ, from, d);
+          if (to !== from) {
             n++;
-            if (cur === CENTER) win = true;
+            if (to === CENTER) win = true;
           }
         }
       }
@@ -89,60 +102,95 @@ export function solve(onProgress = () => {}) {
       } else {
         remaining[idx] = n;
       }
+
+      // 「もう一回」の局面：特殊マスにいるコマだけ動かせる。
+      // 特殊マスは★の斜めなので、このコマで★に止まることはない。来た方向へは必ず戻れるので手は1つ以上ある
+      if (hasBonus) {
+        let nx = 0;
+        for (let d = 0; d < 4; d++) if (dest(occ, bonus, d) !== bonus) nx++;
+        remaining[EXTRA + idx] = nx;
+      }
     }
   }
 
   // 2) 確定した局面から、1手前の局面へさかのぼる
-  let v = 0;
-  const settle = (p) => {
+  // w = その手を選んだときの、親局面の手番側から見た結果（+n=n手で勝ち、-n=n手で負け）
+  const settle = (p, w) => {
     if (val[p] !== 0) return;
-    if (v < 0) {
-      // 相手を負け局面にできる → 勝ち（幅優先なので最短）
-      val[p] = 1 - v;
+    if (w > 0) {
+      // 勝てる手がある → 勝ち（幅優先なので最短）
+      val[p] = w;
       queue[tail++] = p;
     } else if (--remaining[p] === 0) {
-      // どの手も相手の勝ち → 負け（最後に確定した子が最長）
-      val[p] = -(v + 1);
+      // どの手も負け → 負け（最後に確定した子が最長）
+      val[p] = w;
       queue[tail++] = p;
+    }
+  };
+
+  // 今 p にいるコマ（mover3 の k 番目）が直前に動いたとして、元の位置を列挙する。
+  // onlyFrom >= 0 なら、そのマスから動いた場合だけ
+  const unmove = (occ, mover3, k, onlyFrom, toParent, w) => {
+    const p = cells[mover3 + k];
+    const o1 = cells[mover3 + ((k + 1) % 3)];
+    const o2 = cells[mover3 + ((k + 2) % 3)];
+    for (let d = 0; d < 4; d++) {
+      const stop = NEIGHBOR[p * 4 + d];
+      if (stop >= 0 && !((occ >> stop) & 1)) continue; // この向きでは p で止まらない
+      const back = d ^ 1;
+      let cur = NEIGHBOR[p * 4 + back];
+      while (cur >= 0 && !((occ >> cur) & 1)) {
+        if (cur !== CENTER && (onlyFrom < 0 || cur === onlyFrom)) {
+          settle(toParent(comboRank(cur, o1, o2)), w);
+        }
+        cur = NEIGHBOR[cur * 4 + back];
+      }
     }
   };
 
   while (head < tail) {
     if ((head & 65535) === 0) onProgress(0.4 + 0.6 * (head / Math.max(tail, positions * 0.47)));
     const q = queue[head++];
-    v = val[q];
-    const mi = Math.floor(q / NC);
-    const oi = q - mi * NC;
+    const v = val[q];
+    const extra = q >= EXTRA;
+    const base = extra ? q - EXTRA : q;
+    const mi = Math.floor(base / NC);
+    const oi = base - mi * NC;
     const occ = masks[mi] | masks[oi];
 
-    // 直前に動いたのは相手側（oi）のコマ。止まった理由のある向きについて元の位置を列挙する
-    for (let k = 0; k < 3; k++) {
-      const p = cells[oi * 3 + k];
-      const o1 = cells[oi * 3 + ((k + 1) % 3)];
-      const o2 = cells[oi * 3 + ((k + 2) % 3)];
-      for (let d = 0; d < 4; d++) {
-        const stop = NEIGHBOR[p * 4 + d];
-        if (stop >= 0 && !((occ >> stop) & 1)) continue; // この向きでは p で止まらない
-        const back = d ^ 1;
-        let cur = NEIGHBOR[p * 4 + back];
-        while (cur >= 0 && !((occ >> cur) & 1)) {
-          if (cur !== CENTER) settle(comboRank(cur, o1, o2) * NC + mi);
-          cur = NEIGHBOR[cur * 4 + back];
-        }
+    if (extra) {
+      // 「もう一回」の局面へは、手番側が普通の手で特殊マスに止まって来る。手番は変わらない
+      const wSame = v > 0 ? v + 1 : v - 1;
+      for (let k = 0; k < 3; k++) {
+        if (cells[mi * 3 + k] === bonus) unmove(occ, mi * 3, k, -1, (r) => r * NC + oi, wSame);
       }
+      continue;
+    }
+
+    // 普通の局面へは、相手が普通の手か「もう一回」の手を指して来る。手番が入れ替わるので結果は逆
+    const wSwap = v < 0 ? 1 - v : -(v + 1);
+    for (let k = 0; k < 3; k++) {
+      // 特殊マスにいるコマが最後に動いたなら、相手は今「もう一回」の番のはずなので除く
+      if (cells[oi * 3 + k] === bonus) continue;
+      unmove(occ, oi * 3, k, -1, (r) => r * NC + mi, wSwap);
+      // 相手の「もう一回」の手：特殊マスから動いてきた
+      if (bonus >= 0) unmove(occ, oi * 3, k, bonus, (r) => EXTRA + r * NC + mi, wSwap);
     }
 
     const pp = passParent.get(q);
-    if (pp !== undefined) settle(pp);
+    if (pp !== undefined) settle(pp, wSwap);
   }
 
+  // 統計は普通の局面について数える（特殊マスなしの数値は仕様書と同じになる）
   let wins = 0;
   let losses = 0;
   let maxDepth = 0;
-  for (let i = 0; i < val.length; i++) {
+  for (let i = 0; i < size; i++) {
     const x = val[i];
-    if (x > 0) wins++;
-    else if (x < 0) losses++;
+    if (i < EXTRA) {
+      if (x > 0) wins++;
+      else if (x < 0) losses++;
+    }
     if (x > maxDepth) maxDepth = x;
     if (-x > maxDepth) maxDepth = -x;
   }
